@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EventSetu — Campus announcements in one place</title>
+<script>
+  // Set theme before first paint: saved choice, else system preference
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('eventsetu-theme'); } catch (e) {}
+    if (t !== 'light' && t !== 'dark') {
+      t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f4f2ed;
+    --surface: #fbfaf7;
+    --sunken: #edeae3;
+    --ink: #1c1b19;
+    --ink-2: #4d4a44;
+    --ink-3: #6b675f;
+    --line: #d9d5cb;
+    --line-strong: #bdb8ac;
+    --accent: #1f4e79;
+    --accent-hover: #173d5f;
+    --on-accent: #ffffff;
+    --urgent: #a3321f;
+    --warn: #7a4f00;
+    --warn-bg: #f5ebd0;
+    --warn-line: #d9bd7a;
+    --focus: #1f4e79;
+    --overlay: rgba(28, 27, 25, 0.45);
+
+    --c-deadline: #b5452f;
+    --c-exam: #2f5d8a;
+    --c-workshop: #3b7a4f;
+    --c-cultural: #7b4f93;
+    --c-room: #9a6a12;
+
+    --serif: 'Newsreader', 'Iowan Old Style', Georgia, serif;
+    --sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #141413;
+    --surface: #1b1a18;
+    --sunken: #222120;
+    --ink: #ece9e2;
+    --ink-2: #bdb9b0;
+    --ink-3: #928e85;
+    --line: #2f2d2a;
+    --line-strong: #46433e;
+    --accent: #8fb4d9;
+    --accent-hover: #a9c6e4;
+    --on-accent: #10151a;
+    --urgent: #e58a74;
+    --warn: #e2b660;
+    --warn-bg: #2a2314;
+    --warn-line: #5b4a22;
+    --focus: #8fb4d9;
+    --overlay: rgba(0, 0, 0, 0.6);
+
+    --c-deadline: #e0836d;
+    --c-exam: #7fa8d4;
+    --c-workshop: #7fbf92;
+    --c-cultural: #b895cc;
+    --c-room: #d9a441;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 400 15px/1.5 var(--sans);
+    min-height: 100vh;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* Header */
+  .site-header { border-bottom: 1px solid var(--line); background: var(--bg); }
+  .site-header .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 18px; padding-bottom: 18px; }
+  .brand h1 { margin: 0; font: 600 24px/1.1 var(--serif); letter-spacing: -0.01em; }
+  .brand p { margin: 4px 0 0; font-size: 13px; color: var(--ink-3); }
+  .actions { display: flex; gap: 8px; align-items: center; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 8px 14px; border-radius: 4px; border: 1px solid var(--line-strong);
+    background: transparent; font-size: 14px; font-weight: 500; line-height: 1.2;
+    transition: background-color .12s, border-color .12s;
+  }
+  .btn:hover { background: var(--sunken); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .btn-link { border: 0; padding: 4px 0; color: var(--accent); background: none; font-size: 13px; font-weight: 500; }
+  .btn-link:hover { background: none; text-decoration: underline; text-underline-offset: 3px; }
+
+  main { padding: 28px 0 64px; }
+
+  /* Conflict banner */
+  .banner {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    background: var(--warn-bg); border: 1px solid var(--warn-line); border-left: 3px solid var(--warn);
+    border-radius: 4px; padding: 12px 16px; margin-bottom: 24px;
+  }
+  .banner strong { display: block; font-weight: 600; color: var(--warn); }
+  .banner span { font-size: 13px; color: var(--ink-2); }
+  .banner .btn { flex-shrink: 0; border-color: var(--warn); color: var(--warn); }
+  .banner .btn:hover { background: transparent; text-decoration: underline; text-underline-offset: 3px; }
+
+  /* Summary strip */
+  .summary {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    border-top: 1px solid var(--line-strong); border-bottom: 1px solid var(--line);
+    margin: 0 0 24px;
+  }
+  .summary div { padding: 14px 0 14px 16px; border-left: 1px solid var(--line); }
+  .summary div:first-child { border-left: 0; padding-left: 0; }
+  .summary dt { font-size: 12px; color: var(--ink-3); letter-spacing: .04em; text-transform: uppercase; }
+  .summary dd { margin: 2px 0 0; font: 500 30px/1.1 var(--serif); font-variant-numeric: lining-nums; }
+  .summary .is-urgent dd { color: var(--urgent); }
+  .summary .is-warn dd { color: var(--warn); }
+
+  /* Toolbar */
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 24px; }
+  .field {
+    background: var(--surface); border: 1px solid var(--line-strong); border-radius: 4px;
+    padding: 8px 10px; font-size: 14px; min-width: 0;
+  }
+  .field::placeholder { color: var(--ink-3); opacity: 1; }
+  .field:hover { border-color: var(--ink-3); }
+  .toolbar .search { flex: 1 1 260px; }
+  .toggle[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+
+  /* Feed */
+  .feed { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 16px; }
+
+  .memo {
+    display: flex; flex-direction: column; justify-content: space-between;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+    padding: 18px 18px 14px;
+  }
+  .memo.urgent { border-left: 3px solid var(--urgent); padding-left: 16px; }
+
+  .memo-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+  .tags { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; color: var(--ink-3); letter-spacing: .03em; text-transform: uppercase; }
+  .tag-type { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); font-weight: 600; }
+  .tag-type::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--dot, var(--ink-3)); }
+  .tag-urgent { color: var(--urgent); font-weight: 600; }
+  .t-deadline { --dot: var(--c-deadline); }
+  .t-exam { --dot: var(--c-exam); }
+  .t-workshop { --dot: var(--c-workshop); }
+  .t-cultural { --dot: var(--c-cultural); }
+  .t-room { --dot: var(--c-room); }
+
+  .icon-btn {
+    border: 0; background: none; padding: 4px; margin: -4px -4px 0 0; border-radius: 4px;
+    color: var(--ink-3); line-height: 0;
+  }
+  .icon-btn:hover { color: var(--ink); background: var(--sunken); }
+  .icon-btn[aria-pressed="true"] { color: var(--accent); }
+
+  .memo h3 { margin: 10px 0 12px; font: 600 19px/1.25 var(--serif); letter-spacing: -0.005em; }
+
+  .conflict-chip {
+    display: block; width: 100%; text-align: left; margin: 0 0 12px;
+    background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 4px;
+    padding: 7px 10px; font-size: 13px; font-weight: 500; color: var(--warn);
+  }
+  .conflict-chip:hover { border-color: var(--warn); }
+
+  .facts { margin: 0 0 12px; display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 14px; }
+  .facts dt { color: var(--ink-3); }
+  .facts dd { margin: 0; color: var(--ink); }
+
+  .quote {
+    margin: 0 0 14px; padding: 2px 0 2px 12px; border-left: 2px solid var(--line-strong);
+    font-size: 13px; color: var(--ink-2);
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+
+  .memo-foot {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    border-top: 1px solid var(--line); padding-top: 10px; font-size: 13px; color: var(--ink-3);
+  }
+  .memo-foot .src { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .empty { display: none; padding: 64px 0; text-align: center; }
+  .empty.show { display: block; }
+  .empty h3 { margin: 0 0 4px; font: 600 20px var(--serif); }
+  .empty p { margin: 0; color: var(--ink-3); font-size: 14px; }
+
+  /* Modals */
+  .overlay {
+    position: fixed; inset: 0; z-index: 50; background: var(--overlay);
+    display: flex; align-items: center; justify-content: center; padding: 16px;
+  }
+  .overlay[hidden] { display: none; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px;
+    width: 100%; max-width: 640px; max-height: 92vh; overflow-y: auto; padding: 24px;
+  }
+  .modal.narrow { max-width: 480px; }
+  .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+  .modal-head h2 { margin: 0; font: 600 21px/1.2 var(--serif); }
+  .modal-head p { margin: 4px 0 0; font-size: 13px; color: var(--ink-3); }
+  .modal label.lbl { display: block; margin-bottom: 4px; font-size: 12px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
+  .modal .field { width: 100%; }
+  .modal textarea.field { resize: vertical; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-row { margin-bottom: 14px; }
+  .row-between { display: flex; align-items: center; justify-content: space-between; margin: 10px 0 18px; gap: 12px; }
+  .checks { display: flex; flex-wrap: wrap; gap: 8px 22px; margin: 16px 0; }
+  .checks label { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+  .checks input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+  .rule { border: 0; border-top: 1px solid var(--line); margin: 18px 0; }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--line); margin-top: 22px; padding-top: 16px; }
+
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
+  .compare > div { border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; font-size: 13px; background: var(--bg); }
+  .compare .k { display: block; margin-bottom: 4px; font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
+  .note { margin: 12px 0 0; padding: 10px 12px; border-left: 3px solid var(--warn); background: var(--warn-bg); font-size: 13px; color: var(--ink); border-radius: 0 4px 4px 0; }
+
+  /* Toast */
+  .toast {
+    position: fixed; right: 20px; bottom: 20px; z-index: 60; max-width: 340px;
+    background: var(--ink); color: var(--bg); padding: 10px 14px; border-radius: 4px; font-size: 14px;
+    opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity .18s, transform .18s;
+  }
+  .toast.show { opacity: 1; transform: none; }
+
+  @media (max-width: 720px) {
+    .wrap { padding: 0 16px; }
+    .summary { grid-template-columns: repeat(2, 1fr); }
+    .summary div:nth-child(3) { border-left: 0; padding-left: 0; }
+    .summary div:nth-child(n+3) { border-top: 1px solid var(--line); }
+    .form-grid, .compare { grid-template-columns: 1fr; }
+    .banner { flex-direction: column; align-items: flex-start; }
+    .brand p { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <div class="brand">
+      <h1>EventSetu</h1>
+      <p>Campus announcements in one place</p>
+    </div>
+    <div class="actions">
+      <button class="btn" id="themeBtn" type="button" onclick="toggleTheme()" aria-label="Switch to dark theme">Dark</button>
+      <button class="btn btn-primary" type="button" onclick="openAddModal()">Add memo</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="conflictBannerContainer"></div>
+
+  <dl class="summary">
+    <div><dt>Active memos</dt><dd id="statTotal">0</dd></div>
+    <div class="is-urgent"><dt>Urgent</dt><dd id="statUrgent">0</dd></div>
+    <div class="is-warn"><dt>Conflicting</dt><dd id="statConflicts">0</dd></div>
+    <div><dt>Bookmarked</dt><dd id="statBookmarks">0</dd></div>
+  </dl>
+
+  <div class="toolbar">
+    <input type="search" id="searchInput" class="field search" oninput="filterAnnouncements()" placeholder="Search titles, venues, messages" aria-label="Search memos">
+    <select id="filterDept" class="field" onchange="filterAnnouncements()" aria-label="Department">
+      <option value="ALL">All departments</option>
+      <option value="CSE">CSE</option>
+      <option value="ECE">ECE</option>
+      <option value="MECH">MECH</option>
+      <option value="General">General</option>
+    </select>
+    <select id="filterYear" class="field" onchange="filterAnnouncements()" aria-label="Year">
+      <option value="ALL">All years</option>
+      <option value="1st Year">1st year</option>
+      <option value="2nd Year">2nd year</option>
+      <option value="3rd Year">3rd year</option>
+      <option value="Final Year">Final year</option>
+    </select>
+    <select id="filterType" class="field" onchange="filterAnnouncements()" aria-label="Type">
+      <option value="ALL">All types</option>
+      <option value="Deadline">Deadline</option>
+      <option value="Exam">Exam</option>
+      <option value="Cultural">Cultural</option>
+      <option value="Workshop">Workshop</option>
+      <option value="Room Change">Room change</option>
+    </select>
+    <button class="btn toggle" id="bookmarkFilterBtn" type="button" aria-pressed="false" onclick="toggleBookmarksFilter()">Bookmarked only</button>
+  </div>
+
+  <div id="announcementsGrid" class="feed"></div>
+
+  <div id="emptyState" class="empty">
+    <h3>Nothing matches</h3>
+    <p>Try a different search or loosen the filters.</p>
+  </div>
+</main>
+
+<!-- Add memo -->
+<div id="addModal" class="overlay" hidden onclick="if(event.target===this)closeAddModal()">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addTitle">
+    <div class="modal-head">
+      <div>
+        <h2 id="addTitle">Add a memo</h2>
+        <p>Paste a message from a group chat and fill in what the extractor misses.</p>
+      </div>
+      <button class="icon-btn" type="button" onclick="closeAddModal()" aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4l10 10M14 4L4 14"/></svg>
+      </button>
+    </div>
+
+    <div class="form-row">
+      <label class="lbl" for="rawText">Original message</label>
+      <textarea id="rawText" class="field" rows="4" placeholder="e.g. URGENT: Prof Sharma says the Data Structures midterm is moved to Friday 3 PM in Hall 2B for 2nd Year CSE"></textarea>
+    </div>
+    <div class="row-between">
+      <button type="button" class="btn-link btn" onclick="loadSampleIntoParser()">Use a sample message</button>
+      <button type="button" class="btn" onclick="parseRawText()">Extract details</button>
+    </div>
+
+    <hr class="rule">
+
+    <div class="form-grid">
+      <div>
+        <label class="lbl" for="parseTitle">Title</label>
+        <input type="text" id="parseTitle" class="field">
+      </div>
+      <div>
+        <label class="lbl" for="parseType">Type</label>
+        <select id="parseType" class="field">
+          <option value="Deadline">Deadline</option>
+          <option value="Exam">Exam</option>
+          <option value="Cultural">Cultural</option>
+          <option value="Workshop">Workshop</option>
+          <option value="Room Change">Room change</option>
+        </select>
+      </div>
+      <div>
+        <label class="lbl" for="parseDeadline">Date and time</label>
+        <input type="text" id="parseDeadline" class="field" placeholder="Oct 15, 2026 - 3:00 PM">
+      </div>
+      <div>
+        <label class="lbl" for="parseLocation">Venue</label>
+        <input type="text" id="parseLocation" class="field" placeholder="Hall 2B">
+      </div>
+      <div>
+        <label class="lbl" for="parseDept">Department</label>
+        <select id="parseDept" class="field">
+          <option value="CSE">CSE</option>
+          <option value="ECE">ECE</option>
+          <option value="MECH">MECH</option>
+          <option value="General">General</option>
+        </select>
+      </div>
+      <div>
+        <label class="lbl" for="parseEligibility">Who it's for</label>
+        <input type="text" id="parseEligibility" class="field" placeholder="2nd Year Students">
+      </div>
+    </div>
+
+    <div class="checks">
+      <label><input type="checkbox" id="parseUrgent"> Urgent</label>
+      <label><input type="checkbox" id="parseConflict"> Sources disagree</label>
+    </div>
+
+    <div id="conflictNotesWrapper" class="form-row" hidden>
+      <label class="lbl" for="parseConflictNote">What conflicts</label>
+      <input type="text" id="parseConflictNote" class="field" placeholder="e.g. A later message says Lecture Hall 4 instead of Hall 2B">
+    </div>
+
+    <div class="form-row" style="margin-bottom:0">
+      <label class="lbl" for="parseSource">Source</label>
+      <input type="text" id="parseSource" class="field" value="WhatsApp batch group">
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn" type="button" onclick="closeAddModal()">Cancel</button>
+      <button class="btn btn-primary" type="button" onclick="saveAnnouncement()">Publish memo</button>
+    </div>
+  </div>
+</div>
+
+<!-- Conflict details -->
+<div id="conflictModal" class="overlay" hidden onclick="if(event.target===this)closeConflictModal()">
+  <div class="modal narrow" role="dialog" aria-modal="true" aria-labelledby="conflictTitle">
+    <div class="modal-head">
+      <div>
+        <h2 id="conflictTitle">Sources disagree</h2>
+        <p id="conflictEvent"></p>
+      </div>
+      <button class="icon-btn" type="button" onclick="closeConflictModal()" aria-label="Close">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4l10 10M14 4L4 14"/></svg>
+      </button>
+    </div>
+    <div id="conflictModalContent"></div>
+    <div class="modal-foot">
+      <button class="btn" type="button" onclick="closeConflictModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script>
+  let announcements = [
+    {
+      id: 1,
+      title: "Midterm exam room and schedule update",
+      type: "Exam",
+      deadline: "Oct 18, 2026 - 10:00 AM",
+      location: "Main Auditorium Block B",
+      dept: "CSE",
+      eligibility: "2nd Year Students",
+      urgent: true,
+      hasConflict: true,
+      conflictNote: "Initial chat mentioned 'Lecture Hall 101', but the official circular confirms 'Main Auditorium Block B'.",
+      source: "Official CSE 2026 WhatsApp group",
+      bookmarked: true,
+      read: false,
+      rawText: "Hey guys! Note that Data Structures midterm is rescheduled. Prof Sharma said Hall 101 initially in morning chat, but evening update says Main Auditorium Block B. Don't miss!"
+    },
+    {
+      id: 2,
+      title: "Innovate 2026 tech fest: paper submission",
+      type: "Deadline",
+      deadline: "Oct 22, 2026 - 11:59 PM",
+      location: "Online portal / Dept Lab 3",
+      dept: "General",
+      eligibility: "All Years",
+      urgent: true,
+      hasConflict: false,
+      conflictNote: "",
+      source: "Student Council broadcast",
+      bookmarked: false,
+      read: true,
+      rawText: "URGENT DEADLINE: Paper submissions for Innovate 2026 close on Oct 22. Submit via portal or drop hardcopy at Dept Lab 3."
+    },
+    {
+      id: 3,
+      title: "AI and machine learning guest workshop",
+      type: "Workshop",
+      deadline: "Oct 25, 2026 - 2:00 PM",
+      location: "Seminar Hall 2",
+      dept: "ECE",
+      eligibility: "3rd & Final Year",
+      urgent: false,
+      hasConflict: true,
+      conflictNote: "The notice board says Seminar Hall 2, while the Discord server mentioned Lab 4.",
+      source: "ECE department announcements",
+      bookmarked: true,
+      read: false,
+      rawText: "Join us for an exclusive AI workshop by Dr. Alan. Venue: Seminar Hall 2 (Discord says Lab 4, please note Hall 2 is final)."
+    },
+    {
+      id: 4,
+      title: "Cultural Night auditions: venue change",
+      type: "Cultural",
+      deadline: "Oct 19, 2026 - 5:00 PM",
+      location: "Student Activity Center (SAC)",
+      dept: "General",
+      eligibility: "All Years",
+      urgent: false,
+      hasConflict: false,
+      conflictNote: "",
+      source: "Cultural Club Telegram",
+      bookmarked: false,
+      read: false,
+      rawText: "Auditions for Annual Cultural Night moved to SAC due to rain. Be there by 5 PM sharp!"
+    }
+  ];
+
+  let showOnlyBookmarked = false;
+  let toastTimer = null;
+
+  const TYPE_CLASS = { 'Deadline': 't-deadline', 'Exam': 't-exam', 'Workshop': 't-workshop', 'Cultural': 't-cultural', 'Room Change': 't-room' };
+
+  const bookmarkSvg = (filled) =>
+    `<svg width="18" height="18" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2h9v12L8 10.5 3.5 14z" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>`;
+
+  window.addEventListener('DOMContentLoaded', () => {
+    syncThemeButton();
+    renderAnnouncements();
+    updateStats();
+    updateConflictBanner();
+
+    document.getElementById('parseConflict').addEventListener('change', (e) => {
+      document.getElementById('conflictNotesWrapper').hidden = !e.target.checked;
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { closeAddModal(); closeConflictModal(); }
+    });
+  });
+
+  function renderAnnouncements(list = announcements) {
+    const grid = document.getElementById('announcementsGrid');
+    const empty = document.getElementById('emptyState');
+    grid.innerHTML = '';
+    empty.classList.toggle('show', list.length === 0);
+
+    list.forEach(item => {
+      const card = document.createElement('article');
+      card.className = 'memo' + (item.urgent ? ' urgent' : '');
+      card.innerHTML = `
+        <div>
+          <div class="memo-top">
+            <div class="tags">
+              <span class="tag-type ${TYPE_CLASS[item.type] || ''}">${escapeHtml(item.type)}</span>
+              ${item.urgent ? '<span class="tag-urgent">Urgent</span>' : ''}
+              <span>${escapeHtml(item.dept)}</span>
+              <span>${escapeHtml(item.eligibility)}</span>
+            </div>
+            <button class="icon-btn" type="button" onclick="toggleBookmark(${item.id})" aria-pressed="${item.bookmarked}" aria-label="${item.bookmarked ? 'Remove bookmark' : 'Bookmark'}">
+              ${bookmarkSvg(item.bookmarked)}
+            </button>
+          </div>
+
+          <h3>${escapeHtml(item.title)}</h3>
+
+          ${item.hasConflict ? `<button type="button" class="conflict-chip" onclick="openConflictModal(${item.id})">Sources disagree. See details</button>` : ''}
+
+          <dl class="facts">
+            <dt>When</dt><dd>${escapeHtml(item.deadline)}</dd>
+            <dt>Where</dt><dd>${escapeHtml(item.location)}</dd>
+          </dl>
+
+          <blockquote class="quote">${escapeHtml(item.rawText)}</blockquote>
+        </div>
+        <div class="memo-foot">
+          <span class="src" title="${escapeHtml(item.source)}">${escapeHtml(item.source)}</span>
+          <button type="button" class="btn btn-link" onclick="addToCalendar(${item.id})">Add to calendar</button>
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+  }
+
+  function updateStats() {
+    document.getElementById('statTotal').textContent = announcements.length;
+    document.getElementById('statUrgent').textContent = announcements.filter(a => a.urgent).length;
+    document.getElementById('statConflicts').textContent = announcements.filter(a => a.hasConflict).length;
+    document.getElementById('statBookmarks').textContent = announcements.filter(a => a.bookmarked).length;
+  }
+
+  function updateConflictBanner() {
+    const container = document.getElementById('conflictBannerContainer');
+    const conflicts = announcements.filter(a => a.hasConflict);
+    if (!conflicts.length) { container.innerHTML = ''; return; }
+    container.innerHTML = `
+      <div class="banner">
+        <div>
+          <strong>${conflicts.length} ${conflicts.length === 1 ? 'memo has' : 'memos have'} conflicting information</strong>
+          <span>Chats gave different venues or times. Check before you head out.</span>
+        </div>
+        <button type="button" class="btn" onclick="openConflictModal(${conflicts[0].id})">Review</button>
+      </div>`;
+  }
+
+  function filterAnnouncements() {
+    const query = document.getElementById('searchInput').value.toLowerCase();
+    const dept = document.getElementById('filterDept').value;
+    const year = document.getElementById('filterYear').value;
+    const type = document.getElementById('filterType').value;
+
+    const filtered = announcements.filter(item => {
+      const matchesQuery = !query ||
+        item.title.toLowerCase().includes(query) ||
+        item.location.toLowerCase().includes(query) ||
+        item.rawText.toLowerCase().includes(query);
+      const matchesDept = dept === 'ALL' || item.dept === dept || item.dept === 'General';
+      const matchesYear = year === 'ALL' || item.eligibility.includes(year) || item.eligibility.includes('All Years');
+      const matchesType = type === 'ALL' || item.type === type;
+      const matchesBookmark = !showOnlyBookmarked || item.bookmarked;
+      return matchesQuery && matchesDept && matchesYear && matchesType && matchesBookmark;
+    });
+    renderAnnouncements(filtered);
+  }
+
+  function toggleBookmarksFilter() {
+    showOnlyBookmarked = !showOnlyBookmarked;
+    document.getElementById('bookmarkFilterBtn').setAttribute('aria-pressed', String(showOnlyBookmarked));
+    filterAnnouncements();
+  }
+
+  function toggleBookmark(id) {
+    const item = announcements.find(a => a.id === id);
+    if (!item) return;
+    item.bookmarked = !item.bookmarked;
+    filterAnnouncements();
+    updateStats();
+    showToast(item.bookmarked ? 'Bookmarked' : 'Bookmark removed');
+  }
+
+  function openAddModal() { document.getElementById('addModal').hidden = false; document.getElementById('rawText').focus(); }
+  function closeAddModal() { document.getElementById('addModal').hidden = true; }
+
+  function loadSampleIntoParser() {
+    document.getElementById('rawText').value = "URGENT: Prof. Meenakshi announced that the Compiler Design Quiz 2 is rescheduled to Friday at 4:00 PM in Lab 304 for Final Year CSE students. (Note: earlier notice said Lab 102).";
+    parseRawText();
+  }
+
+  // Simple rule-based extraction from pasted chat text
+  function parseRawText() {
+    const raw = document.getElementById('rawText').value.trim();
+    if (!raw) { showToast('Paste a message first'); return; }
+    const t = raw.toLowerCase();
+
+    let title = "General announcement";
+    if (/(quiz|exam|midterm)/.test(t)) title = "Exam and quiz schedule notice";
+    else if (/(workshop|guest)/.test(t)) title = "Workshop notice";
+    else if (/(submission|deadline)/.test(t)) title = "Submission deadline update";
+    else if (/(audition|cultural)/.test(t)) title = "Cultural event announcement";
+
+    let type = "Deadline";
+    if (/(exam|quiz)/.test(t)) type = "Exam";
+    else if (/workshop/.test(t)) type = "Workshop";
+    else if (/(cultural|audition)/.test(t)) type = "Cultural";
+    else if (/(rescheduled|moved|hall)/.test(t)) type = "Room Change";
+
+    const venue = raw.match(/\b(lab|hall|room|block|auditorium|seminar hall)\s*[\w-]+/i);
+    const day = raw.match(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|today)\b/i);
+    const time = raw.match(/\b\d{1,2}(:\d{2})?\s?(am|pm)\b/i);
+
+    let dept = "General";
+    if (/\bcse\b/.test(t)) dept = "CSE";
+    else if (/\bece\b/.test(t)) dept = "ECE";
+    else if (/\bmech\b/.test(t)) dept = "MECH";
+
+    let eligibility = "All Years";
+    if (/final year/.test(t)) eligibility = "Final Year Students";
+    else if (/3rd year|third year/.test(t)) eligibility = "3rd Year Students";
+    else if (/2nd year|second year/.test(t)) eligibility = "2nd Year Students";
+    else if (/1st year|first year/.test(t)) eligibility = "1st Year Students";
+
+    const isUrgent = /(urgent|rescheduled)/.test(t);
+    const hasConflict = /(earlier notice|instead|said)/.test(t);
+
+    document.getElementById('parseTitle').value = title;
+    document.getElementById('parseType').value = type;
+    document.getElementById('parseDeadline').value = [day && day[0], time && time[0]].filter(Boolean).join(', ');
+    document.getElementById('parseLocation').value = venue ? venue[0] : '';
+    document.getElementById('parseDept').value = dept;
+    document.getElementById('parseEligibility').value = eligibility;
+    document.getElementById('parseUrgent').checked = isUrgent;
+    document.getElementById('parseConflict').checked = hasConflict;
+    document.getElementById('conflictNotesWrapper').hidden = !hasConflict;
+    document.getElementById('parseConflictNote').value = hasConflict ? "The message refers to an earlier notice with different details." : '';
+
+    showToast('Details extracted. Check them before publishing.');
+  }
+
+  function saveAnnouncement() {
+    const title = document.getElementById('parseTitle').value.trim() || "Untitled memo";
+    const rawText = document.getElementById('rawText').value.trim() || title;
+
+    announcements.unshift({
+      id: Date.now(),
+      title,
+      type: document.getElementById('parseType').value,
+      deadline: document.getElementById('parseDeadline').value.trim() || "TBD",
+      location: document.getElementById('parseLocation').value.trim() || "TBD",
+      dept: document.getElementById('parseDept').value,
+      eligibility: document.getElementById('parseEligibility').value.trim() || "All Years",
+      urgent: document.getElementById('parseUrgent').checked,
+      hasConflict: document.getElementById('parseConflict').checked,
+      conflictNote: document.getElementById('parseConflictNote').value.trim(),
+      source: document.getElementById('parseSource').value.trim() || "Student chat",
+      bookmarked: false,
+      read: false,
+      rawText
+    });
+
+    filterAnnouncements();
+    updateStats();
+    updateConflictBanner();
+    closeAddModal();
+    showToast('Memo published');
+
+    ['rawText', 'parseTitle', 'parseDeadline', 'parseLocation', 'parseEligibility', 'parseConflictNote'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('parseUrgent').checked = false;
+    document.getElementById('parseConflict').checked = false;
+    document.getElementById('conflictNotesWrapper').hidden = true;
+  }
+
+  function openConflictModal(id) {
+    const item = announcements.find(a => a.id === id);
+    if (!item) return;
+    document.getElementById('conflictEvent').textContent = item.title;
+    document.getElementById('conflictModalContent').innerHTML = `
+      <div class="compare">
+        <div><span class="k">Currently listed</span>${escapeHtml(item.location)}<br>${escapeHtml(item.deadline)}</div>
+        <div><span class="k">Source</span>${escapeHtml(item.source)}</div>
+      </div>
+      <p class="note">${escapeHtml(item.conflictNote || 'Two messages in the department chats gave different details.')}</p>
+    `;
+    document.getElementById('conflictModal').hidden = false;
+  }
+  function closeConflictModal() { document.getElementById('conflictModal').hidden = true; }
+
+  // Calendar export (.ics)
+  function icsEscape(s) { return String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n'); }
+  function icsStamp(d) {
+    const p = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}00`;
+  }
+
+  function addToCalendar(id) {
+    const item = announcements.find(a => a.id === id);
+    if (!item) return;
+
+    const start = new Date(item.deadline.replace(/\s-\s/, ' '));
+    const hasDate = !isNaN(start.getTime());
+    const lines = [
+      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//EventSetu//EN',
+      'BEGIN:VEVENT',
+      `UID:${item.id}@eventsetu`,
+      `DTSTAMP:${icsStamp(new Date())}`,
+      ...(hasDate ? [`DTSTART:${icsStamp(start)}`, `DTEND:${icsStamp(new Date(start.getTime() + 3600000))}`] : []),
+      `SUMMARY:${icsEscape(item.title)}`,
+      `DESCRIPTION:${icsEscape(item.rawText)}`,
+      `LOCATION:${icsEscape(item.location)}`,
+      'END:VEVENT', 'END:VCALENDAR'
+    ];
+
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = item.title.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.ics';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+
+    showToast(hasDate ? 'Calendar file downloaded' : "Downloaded. The date wasn't recognized, so set it in your calendar.");
+  }
+
+  // Theme
+  function syncThemeButton() {
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const btn = document.getElementById('themeBtn');
+    btn.textContent = dark ? 'Light' : 'Dark';
+    btn.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
+  }
+
+  function toggleTheme() {
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('eventsetu-theme', next); } catch (e) {}
+    syncThemeButton();
+  }
+
+  function showToast(message) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 2800);
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
+</script>
+</body>
+</html>
